@@ -1,10 +1,8 @@
-from datetime import datetime, date
+from datetime import datetime
 
-from django.db.models import Exists, OuterRef
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.generics import get_object_or_404
-from dictionaries.models import Dictionary, DictionaryVersion, DictionaryItem
+from dictionaries.models import Dictionary
 from dictionaries.serializers import DictionarySerializer, DictionaryElementsSerializer
 from http import HTTPStatus
 from drf_spectacular.utils import (
@@ -13,6 +11,9 @@ from drf_spectacular.utils import (
     OpenApiExample,
     OpenApiResponse,
 )
+from dictionaries.services.dictionary import DictionaryService
+from dictionaries.services.version import VersionService
+from dictionaries.services.item import ItemService
 
 
 class DictionaryAPIView(APIView):
@@ -64,21 +65,18 @@ class DictionaryAPIView(APIView):
             try:
                 date = datetime.strptime(date_str, "%Y-%m-%d").date()
             except ValueError:
-                return Response({"error": "Некорректный формат даты"}, status=HTTPStatus.BAD_REQUEST)
-            versions_subquery = DictionaryVersion.objects.filter(
-                dictionary=OuterRef("pk"),
-                start_date__lte=date
-            )
-            qs = qs.filter(Exists(versions_subquery))
+                return Response(
+                    {"error": "Некорректный формат даты"}, status=HTTPStatus.BAD_REQUEST
+                )
+            qs = DictionaryService.filter_by_date(qs, date)
 
         serializer = DictionarySerializer(qs, many=True)
-
         return Response(
             {
                 "dictionaries": serializer.data
             }
         )
-    
+
 
 class DictionaryElementsView(APIView):
 
@@ -124,19 +122,11 @@ class DictionaryElementsView(APIView):
     def get(self, request, id):
         version_param = request.GET.get("version")
 
-        qs = DictionaryVersion.objects.filter(dictionary_id=id)
-
-        if version_param:
-            version = get_object_or_404(qs, version=version_param)
-        else:
-            version = qs.filter(
-                start_date__lte=date.today()
-            ).order_by("-start_date").first()
-
+        version = VersionService.get_version(id, version_param)
         if not version:
             return Response({"elements": []})
 
-        items = version.dictionary_items.all()
+        items = ItemService.get_items_for_version(version)
         serializer = DictionaryElementsSerializer(
             {
                 "elements": items
@@ -211,25 +201,11 @@ class DictionaryCheckElementView(APIView):
                 {"error": "Код и значение обязательны для проверки"},
                 status=HTTPStatus.BAD_REQUEST
             )
-
-        qs = DictionaryVersion.objects.filter(dictionary_id=id)
-        if version_param:
-            version = qs.filter(version=version_param).first()
-        else:
-            version = qs.filter(
-                start_date__lte=date.today()
-            ).order_by("-start_date").first()
-
+        version = VersionService.get_version(id, version_param)
         if not version:
             return Response(
                 {"exists": False, "error": "Версия справочника не найдена"},
                 status=HTTPStatus.NOT_FOUND
             )
-
-        exists = DictionaryItem.objects.filter(
-            dictionary_version=version,
-            code=code,
-            value=value
-        ).exists()
-
+        exists = ItemService.check_item_exists(version, code, value)
         return Response({"exists": exists})

@@ -14,16 +14,19 @@ class DictionaryItemInline(admin.TabularInline):
     extra = 1
     fields = ("code", "value")
 
+
 @admin.register(Dictionary)
 class DictionaryAdmin(admin.ModelAdmin):
-    list_display = ("id", "code", "name", "get_current_version", "get_current_start_date")
+    list_display = (
+        "id", "code", "name", "get_current_version", "get_current_start_date"
+    )
     search_fields = ("code", "name")
     inlines = [DictionaryVersionInline]
 
     def get_queryset(self, request):
         today = timezone.now().date()
         qs = super().get_queryset(request)
-        
+
         latest_version_qs = (
             DictionaryVersion.objects
             .filter(dictionary=OuterRef("pk"), start_date__lte=today)
@@ -34,6 +37,7 @@ class DictionaryAdmin(admin.ModelAdmin):
             current_version=Subquery(latest_version_qs.values("version")[:1]),
             current_start_date=Subquery(latest_version_qs.values("start_date")[:1]),
         )
+
     def get_current_version(self, obj):
         return obj.current_version or "-"
     get_current_version.short_description = "Текущая версия"
@@ -67,4 +71,3 @@ class DictionaryVersionAdmin(admin.ModelAdmin):
 class DictionaryItemAdmin(admin.ModelAdmin):
     list_display = ("dictionary_version", "code", "value")
     list_select_related = ("dictionary_version",)
-
