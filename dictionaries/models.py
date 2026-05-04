@@ -62,8 +62,9 @@ class DictionaryItem(models.Model):
                 name="unique_item_code_per_version"
             )
         ]
-    indexes = [
-        models.Index(fields=["dictionary_version", "code"]),
-    ]    
+        indexes = [
+            models.Index(fields=["dictionary_version", "code"]),
+        ]
+
     def __str__(self):
         return f"{self.code}: {self.value}"
